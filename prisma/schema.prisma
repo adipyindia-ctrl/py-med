@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Doctor {
+  id                 String         @id @default(cuid())
+  name               String
+  email              String         @unique
+  password           String
+  qualification      String
+  registrationNumber String         @unique
+  specialization     String?
+  phone              String?
+  signature          String?
+  isActive           Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  prescriptions      Prescription[]
+
+  @@map("doctors")
+}
+
+model Patient {
+  id               String         @id @default(cuid())
+  name             String
+  phone            String         @unique
+  age              Int?
+  gender           String?
+  allergies        String?
+  currentMedicines String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  consultations    Consultation[]
+
+  @@map("patients")
+}
+
+model Consultation {
+  id                  String        @id @default(cuid())
+  patientId           String
+  patient             Patient       @relation(fields: [patientId], references: [id])
+  voiceTranscript     String?
+  symptoms            String        @default("[]")
+  symptomsDuration    String?
+  aiSummary           String?
+  urgencyLevel        String        @default("LOW")
+  status              String        @default("PENDING")
+  conversationState   String        @default("INIT")
+  conversationHistory String        @default("[]")
+  detectedLanguage    String        @default("hinglish")
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  payment             Payment?
+  prescription        Prescription?
+
+  @@map("consultations")
+}
+
+model Payment {
+  id                String       @id @default(cuid())
+  consultationId    String       @unique
+  consultation      Consultation @relation(fields: [consultationId], references: [id])
+  amount            Float
+  currency          String       @default("INR")
+  cashfreeOrderId   String       @unique
+  cashfreePaymentId String?
+  status            String       @default("PENDING")
+  paymentMethod     String?
+  webhookData       String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@map("payments")
+}
+
+model Prescription {
+  id                   String       @id @default(cuid())
+  consultationId       String       @unique
+  consultation         Consultation @relation(fields: [consultationId], references: [id])
+  doctorId             String
+  doctor               Doctor       @relation(fields: [doctorId], references: [id])
+  diagnosis            String
+  medicines            String       @default("[]")
+  investigations       String?
+  followUpInstructions String?
+  followUpDate         DateTime?
+  notes                String?
+  pdfUrl               String?
+  sentToPatient        Boolean      @default(false)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@map("prescriptions")
+}
+
+model KnowledgeBase {
+  id          String   @id @default(cuid())
+  category    String
+  symptom     String
+  description String
+  guideline   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("knowledge_base")
+}

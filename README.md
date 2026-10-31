@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏥 MediVoice AI
 
-## Getting Started
+AI-powered WhatsApp medical consultation platform built with Next.js 16.
 
-First, run the development server:
+## Tech Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS v4 |
+| Database | SQLite via Prisma 7 + better-sqlite3 |
+| Auth | NextAuth v5 (JWT) |
+| AI | OpenAI Whisper (transcription) + GPT-4o-mini |
+| Payments | Cashfree Payment Gateway |
+| WhatsApp | Meta WhatsApp Business API |
+| Charts | Recharts |
+| Forms | React Hook Form + Zod |
+
+---
+
+## Patient Flow (7 Steps)
+
+```
+1. Patient sends WhatsApp voice note → Chatbot creates record
+2. AI transcribes audio → extracts symptoms → asks follow-up questions
+3. Safety screening → Emergency? → Alert doctor. Routine? → Continue
+4. Chatbot sends Cashfree payment link → Patient pays
+5. Payment webhook verified → Consultation added to doctor queue
+6. Doctor reviews on dashboard → writes prescription
+7. PDF prescription auto-sent to patient via WhatsApp
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 1. Install dependencies
+```bash
+npm install
+```
 
-## Learn More
+### 2. Configure environment
+```bash
+cp .env.example .env
+# Fill in all values in .env
+```
 
-To learn more about Next.js, take a look at the following resources:
+### 3. Run database migrations
+```bash
+npm run db:migrate
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 4. Seed initial doctor account
+```bash
+npm run db:seed
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Default credentials:
+- Email: `doctor@medivoice.ai`
+- Password: `doctor123`
 
-## Deploy on Vercel
+### 5. Start development server
+```bash
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open [http://localhost:3000](http://localhost:3000)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | SQLite file path e.g. `file:./dev.db` |
+| `NEXTAUTH_SECRET` | Random secret for JWT signing |
+| `NEXTAUTH_URL` | App base URL |
+| `WHATSAPP_VERIFY_TOKEN` | Token for webhook verification |
+| `WHATSAPP_ACCESS_TOKEN` | Meta app access token |
+| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp phone number ID |
+| `OPENAI_API_KEY` | OpenAI API key for Whisper + GPT |
+| `CASHFREE_APP_ID` | Cashfree app ID |
+| `CASHFREE_SECRET_KEY` | Cashfree secret key |
+| `CASHFREE_ENV` | `sandbox` or `production` |
+| `CONSULTATION_FEE` | Fee amount in INR (default: 300) |
+
+---
+
+## API Routes
+
+| Method | Route | Description |
+|---|---|---|
+| GET/POST | `/api/webhook/whatsapp` | WhatsApp webhook |
+| POST | `/api/payment/webhook` | Cashfree payment webhook |
+| GET | `/api/consultation` | List consultations |
+| GET/PATCH | `/api/consultation/[id]` | Get/update consultation |
+| POST | `/api/prescription` | Create prescription |
+| GET | `/api/prescription/[id]/pdf` | View prescription HTML |
+| GET | `/api/patients` | List patients |
+| GET | `/api/patients/[id]` | Patient detail |
+| GET | `/api/admin/stats` | Dashboard statistics |
+
+---
+
+## Dashboard Pages
+
+| Route | Description |
+|---|---|
+| `/dashboard` | Home with stats + recent consultations |
+| `/dashboard/consultations` | All consultations with status filter |
+| `/dashboard/consultations/[id]` | Detail view + prescription form |
+| `/dashboard/patients` | Patient registry with search |
+| `/dashboard/patients/[id]` | Patient profile + history |
+| `/dashboard/prescriptions` | All prescriptions |
+| `/dashboard/analytics` | Revenue charts + status distribution |
+
+---
+
+## Production Checklist
+
+- [ ] Set `NEXTAUTH_SECRET` to a strong random value (`openssl rand -base64 32`)
+- [ ] Set `CASHFREE_ENV=production`
+- [ ] Update `NEXT_PUBLIC_APP_URL` to your domain
+- [ ] Configure WhatsApp Business webhook to point to `/api/webhook/whatsapp`
+- [ ] Configure Cashfree webhook to point to `/api/payment/webhook`
+- [ ] Use PostgreSQL or MySQL instead of SQLite for production (update adapter)
