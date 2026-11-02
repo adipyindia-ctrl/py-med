@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, Heart, Loader2, AlertCircle } from 'lucide-react';
 
 type ConfirmState = 'loading' | 'ok' | 'already_processed' | 'pending' | 'error';
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const linkId = searchParams.get('link_id');
   const [state, setState] = useState<ConfirmState>('loading');
@@ -100,5 +100,24 @@ export default function PaymentSuccessPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-4">
+          <div className="w-full max-w-sm text-center">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100">
+              <Loader2 className="h-10 w-10 animate-spin text-emerald-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Loading...</h1>
+          </div>
+        </div>
+      }
+    >
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }
