@@ -26,9 +26,10 @@ import type { DetectedLanguage } from '@/lib/ai/language';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let linkId: string;
-  
+
 
   try {
+    
     const body = await request.json();
     linkId = body?.link_id ?? '';
   } catch {
