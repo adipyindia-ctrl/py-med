@@ -1,21 +1,30 @@
 import axios from 'axios';
+import { getAppSettings } from '@/lib/settings';
 
-const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!;
-const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN!;
 const API_VERSION = 'v18.0';
-const BASE_URL = `https://graph.facebook.com/${API_VERSION}/${PHONE_NUMBER_ID}`;
 
-const wa = axios.create({
-  baseURL: BASE_URL,
-  headers: {
-    Authorization: `Bearer ${ACCESS_TOKEN}`,
-    'Content-Type': 'application/json',
-  },
-});
+export function getWhatsAppConfig() {
+  const settings = getAppSettings();
+  const phoneNumberId = settings.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+  const accessToken = settings.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '';
+  return { phoneNumberId, accessToken };
+}
+
+function getWaClient() {
+  const { phoneNumberId, accessToken } = getWhatsAppConfig();
+  return axios.create({
+    baseURL: `https://graph.facebook.com/${API_VERSION}/${phoneNumberId}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+}
 
 // ─── Text ────────────────────────────────────────────────────────────────────
 
 export async function sendTextMessage(to: string, body: string): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -28,6 +37,7 @@ export async function sendTextMessage(to: string, body: string): Promise<void> {
 // ─── Audio (by media_id) ──────────────────────────────────────────────────────
 
 export async function sendAudioMessage(to: string, mediaId: string): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -40,6 +50,7 @@ export async function sendAudioMessage(to: string, mediaId: string): Promise<voi
 // ─── Audio (by URL — for hosted files) ───────────────────────────────────────
 
 export async function sendAudioByUrl(to: string, audioUrl: string): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -57,6 +68,7 @@ export async function sendDocumentMessage(
   filename: string,
   caption?: string,
 ): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -78,6 +90,7 @@ export async function sendImageMessage(
   imageUrl: string,
   caption?: string,
 ): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -105,6 +118,7 @@ export async function sendCtaUrlButton(
   url: string,
   footerText?: string,
 ): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -137,6 +151,7 @@ export async function sendListMessage(
   sections: { title: string; rows: { id: string; title: string; description?: string }[] }[],
   footerText?: string,
 ): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -159,6 +174,7 @@ export async function sendButtonMessage(
   bodyText: string,
   buttons: { id: string; title: string }[],
 ): Promise<void> {
+  const wa = getWaClient();
   await wa.post('/messages', {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -180,16 +196,17 @@ export async function sendButtonMessage(
 // ─── Media download ───────────────────────────────────────────────────────────
 
 export async function downloadMediaFile(mediaId: string): Promise<Buffer> {
+  const { accessToken } = getWhatsAppConfig();
   // Step 1: Get media URL
   const metaRes = await axios.get(
     `https://graph.facebook.com/${API_VERSION}/${mediaId}`,
-    { headers: { Authorization: `Bearer ${ACCESS_TOKEN}` } },
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   const mediaUrl: string = metaRes.data.url;
 
   // Step 2: Download binary
   const fileRes = await axios.get(mediaUrl, {
-    headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     responseType: 'arraybuffer',
   });
   return Buffer.from(fileRes.data);

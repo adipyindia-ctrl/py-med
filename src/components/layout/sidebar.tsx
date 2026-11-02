@@ -8,6 +8,7 @@ import {
   Users,
   FileText,
   BarChart3,
+  Settings,
   LogOut,
   Heart,
   ChevronRight,
@@ -22,6 +23,7 @@ const navItems = [
   { href: ROUTES.PATIENTS, icon: Users, label: 'Patients' },
   { href: ROUTES.PRESCRIPTIONS, icon: FileText, label: 'Prescriptions' },
   { href: ROUTES.ANALYTICS, icon: BarChart3, label: 'Analytics' },
+  { href: ROUTES.SETTINGS, icon: Settings, label: 'Settings' },
 ];
 
 export function Sidebar() {

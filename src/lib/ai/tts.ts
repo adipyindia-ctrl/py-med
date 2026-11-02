@@ -2,12 +2,10 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+import { getWhatsAppConfig } from '@/lib/whatsapp/client';
+import { getAppSettings } from '@/lib/settings';
 
 const WHATSAPP_API_VERSION = 'v18.0';
-const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!;
-const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN!;
 
 /**
  * Convert text to Hindi speech using OpenAI TTS,
@@ -17,6 +15,12 @@ const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN!;
 export async function textToSpeechHindi(text: string): Promise<string | null> {
   const tmpPath = path.join('/tmp', `tts_${Date.now()}.mp3`);
   try {
+    const settings = getAppSettings();
+    const apiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY || '';
+    const openai = new OpenAI({ apiKey });
+
+    const { phoneNumberId, accessToken } = getWhatsAppConfig();
+
     // Step 1: Generate audio via OpenAI TTS
     // Strip markdown symbols for cleaner speech
     const cleanText = text
@@ -49,11 +53,11 @@ export async function textToSpeechHindi(text: string): Promise<string | null> {
     form.append('type', 'audio/mpeg');
 
     const uploadRes = await axios.post(
-      `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${PHONE_NUMBER_ID}/media`,
+      `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phoneNumberId}/media`,
       form,
       {
         headers: {
-          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          Authorization: `Bearer ${accessToken}`,
           ...form.getHeaders(),
         },
       },
@@ -65,6 +69,10 @@ export async function textToSpeechHindi(text: string): Promise<string | null> {
     console.warn('[TTS] Failed to generate/upload audio:', msg);
     return null;
   } finally {
-    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    try {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {
+      // ignore cleanup errors
+    }
   }
 }

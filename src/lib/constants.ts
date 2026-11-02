@@ -49,5 +49,6 @@ export const ROUTES = {
   PATIENTS: '/dashboard/patients',
   PRESCRIPTIONS: '/dashboard/prescriptions',
   ANALYTICS: '/dashboard/analytics',
+  SETTINGS: '/dashboard/settings',
   AUTH_LOGIN: '/auth/login',
 };

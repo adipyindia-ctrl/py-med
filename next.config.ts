@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  // pg uses native Node.js net/tls modules — must not be bundled by Turbopack
+  serverExternalPackages: ['pg', 'pg-native'],
   turbopack: {
     rules: {
       "*.css": {
