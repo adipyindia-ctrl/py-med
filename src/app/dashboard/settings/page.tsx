@@ -191,7 +191,7 @@ export default function SettingsPage() {
                 style={{ WebkitTextSecurity: showToken ? 'none' : 'disc' } as React.CSSProperties}
               />
               <p className="mt-1 text-xs text-gray-500">
-                Meta Developer Portal &gt; WhatsApp &gt; API Setup se naya token copy karke yahan paste karein.
+                Copy your token from Meta Developer Portal &gt; WhatsApp &gt; API Setup and paste it here.
               </p>
             </div>
 
@@ -234,7 +234,7 @@ export default function SettingsPage() {
                     Test WhatsApp Connection
                   </h4>
                   <p className="text-xs text-emerald-700 mt-0.5">
-                    Valid access token test karne ke liye test message bhej kar check karein.
+                    Send a test message to verify your access token is valid.
                   </p>
                 </div>
                 <Button
