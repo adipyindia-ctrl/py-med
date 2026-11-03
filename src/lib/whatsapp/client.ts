@@ -257,19 +257,60 @@ export async function sendButtonMessage(
 
 export async function downloadMediaFile(mediaId: string): Promise<Buffer> {
   const { accessToken } = getWhatsAppConfig();
-  // Step 1: Get media URL
-  const metaRes = await axios.get(
-    `https://graph.facebook.com/${API_VERSION}/${mediaId}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  const mediaUrl: string = metaRes.data.url;
-
-  // Step 2: Download binary
-  const fileRes = await axios.get(mediaUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    responseType: 'arraybuffer',
-  });
-  return Buffer.from(fileRes.data);
+  const startTime = Date.now();
+  
+  console.log('[Media] Starting download for mediaId:', mediaId.substring(0, 20) + '...');
+  
+  try {
+    // Step 1: Get media URL from Meta API (with timeout)
+    console.log('[Media] Step 1: Fetching media URL from Meta API...');
+    const metaRes = await axios.get(
+      `https://graph.facebook.com/${API_VERSION}/${mediaId}`,
+      { 
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 15000, // 15 second timeout for Meta API
+      },
+    );
+    
+    const mediaUrl: string = metaRes.data.url;
+    if (!mediaUrl) {
+      throw new Error('Media URL not found in Meta API response');
+    }
+    
+    console.log('[Media] Step 1: Got media URL successfully');
+    console.log('[Media] Step 2: Downloading audio file from Meta CDN...');
+    
+    // Step 2: Download binary from media URL (with timeout and retry)
+    const fileRes = await axios.get(mediaUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      responseType: 'arraybuffer',
+      timeout: 30000, // 30 second timeout for file download
+      maxContentLength: 25 * 1024 * 1024, // 25MB max (Whisper limit)
+    });
+    
+    const buffer = Buffer.from(fileRes.data);
+    const duration = Date.now() - startTime;
+    
+    console.log('[Media] Download successful:', {
+      mediaId: mediaId.substring(0, 20) + '...',
+      sizeBytes: buffer.length,
+      sizeKB: Math.round(buffer.length / 1024),
+      durationMs: duration,
+    });
+    
+    return buffer;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error('[Media] Download FAILED:', {
+      mediaId: mediaId.substring(0, 20) + '...',
+      durationMs: duration,
+      error: err instanceof Error ? err.message : String(err),
+      code: axios.isAxiosError(err) ? err.code : undefined,
+      status: axios.isAxiosError(err) ? err.response?.status : undefined,
+      statusText: axios.isAxiosError(err) ? err.response?.statusText : undefined,
+    });
+    throw err;
+  }
 }
 
 // ─── Webhook signature verification ──────────────────────────────────────────

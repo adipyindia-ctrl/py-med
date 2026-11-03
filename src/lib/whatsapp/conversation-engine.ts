@@ -108,14 +108,36 @@ async function resolveInput(
 
   if (messageType === 'audio' && audioMediaId) {
     try {
+      console.log('[Voice] Starting transcription for audioMediaId:', audioMediaId.substring(0, 20) + '...');
       const { text, language } = await transcribeAudioFromWhatsApp(audioMediaId);
-      if (!text) return null;
+      
+      if (!text || text.trim().length === 0) {
+        console.warn('[Voice] Transcription returned empty text');
+        return null;
+      }
+      
       // Map Whisper language code to our type
       const lang: DetectedLanguage =
         language === 'hi' || language === 'ur' ? 'hindi' : detectLanguage(text);
+      
+      console.log('[Voice] Transcription successful:', {
+        audioMediaId: audioMediaId.substring(0, 20) + '...',
+        language,
+        detectedLang: lang,
+        textLength: text.length,
+      });
+      
       return { text, isVoice: true, lang, rawTranscript: text };
     } catch (err) {
-      console.error('[Voice] Transcription error:', err);
+      console.error('[Voice] Transcription error:', {
+        audioMediaId: audioMediaId.substring(0, 20) + '...',
+        error: err instanceof Error ? err.message : String(err),
+        errorType: err instanceof Error ? err.name : typeof err,
+        isTimeout: err instanceof Error && (err.message.includes('ETIMEDOUT') || err.message.includes('timeout')),
+        isNetwork: err instanceof Error && (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND')),
+      });
+      
+      // Return null to trigger error message to user
       return null;
     }
   }
@@ -137,13 +159,25 @@ export async function handleIncomingMessage(
     // 1. Resolve input first so we have language for welcome message
     const input = await resolveInput(messageType, textBody, audioMediaId);
     if (!input) {
-      console.warn('[ConversationEngine] Failed to resolve input, sending error message');
+      console.warn('[ConversationEngine] Failed to resolve input:', { messageType, hasText: !!textBody, hasAudio: !!audioMediaId });
+      
+      // Send appropriate error message based on message type
       try {
-        await sendTextMessage(
-          from,
-          '⚠️ Aapka message samajh nahi aaya. Kripya text ya voice note mein dobara bhejein.',
-        );
-      } catch { /* ignore */ }
+        let errorMessage = '⚠️ Sorry, we couldn\'t understand your message. Please try again with text or voice.';
+        
+        if (messageType === 'audio') {
+          errorMessage = '⚠️ Voice message sunne mein dikkat aayi. Kripya:\n\n' +
+                        '1️⃣ Text message bhejein, ya\n' +
+                        '2️⃣ Voice message dobara record karein\n\n' +
+                        'Agar problem hai toh text mein type karein.';
+        } else if (messageType === 'text') {
+          errorMessage = '⚠️ Aapka text message samajh nahi aaya. Kripya dobara bhejein.';
+        }
+        
+        await sendTextMessage(from, errorMessage);
+      } catch (sendErr) {
+        console.error('[ConversationEngine] Failed to send error message:', sendErr);
+      }
       return;
     }
 

@@ -7,7 +7,11 @@ import { downloadMediaFile } from '@/lib/whatsapp/client';
 /** Create an OpenAI client at call time so Settings UI key changes take effect without restart */
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
-  return new OpenAI({ apiKey });
+  return new OpenAI({ 
+    apiKey,
+    timeout: 60000, // 60 second timeout for Whisper API
+    maxRetries: 2,   // Retry twice on failure
+  });
 }
 
 export interface TranscriptResult {
@@ -22,13 +26,26 @@ export interface TranscriptResult {
 export async function transcribeAudioFromWhatsApp(
   mediaId: string,
 ): Promise<TranscriptResult> {
-  const openai = getOpenAIClient();
-  const audioBuffer = await downloadMediaFile(mediaId);
-  const tmpPath = path.join(os.tmpdir(), `audio_${Date.now()}.ogg`);
-  fs.writeFileSync(tmpPath, audioBuffer);
-
+  const startTime = Date.now();
+  console.log('[Whisper] Starting transcription for mediaId:', mediaId.substring(0, 20) + '...');
+  
+  let tmpPath: string | null = null;
+  
   try {
-    // Use verbose_json to get language detection
+    // Step 1: Download audio from WhatsApp
+    console.log('[Whisper] Step 1: Downloading audio from WhatsApp...');
+    const audioBuffer = await downloadMediaFile(mediaId);
+    console.log('[Whisper] Audio downloaded successfully, size:', audioBuffer.length, 'bytes');
+    
+    // Step 2: Save to temp file
+    tmpPath = path.join(os.tmpdir(), `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.ogg`);
+    fs.writeFileSync(tmpPath, audioBuffer);
+    console.log('[Whisper] Audio saved to temp file:', tmpPath);
+    
+    // Step 3: Transcribe with OpenAI Whisper
+    console.log('[Whisper] Step 2: Sending to OpenAI Whisper API...');
+    const openai = getOpenAIClient();
+    
     const result = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpPath) as unknown as File,
       model: 'whisper-1',
@@ -45,9 +62,36 @@ export async function transcribeAudioFromWhatsApp(
         ? ((result as { language: string }).language ?? 'hi')
         : 'hi';
 
+    const duration = Date.now() - startTime;
+    console.log('[Whisper] Transcription successful:', {
+      mediaId: mediaId.substring(0, 20) + '...',
+      language,
+      textLength: text.length,
+      textPreview: text.substring(0, 50) + '...',
+      durationMs: duration,
+    });
+
     return { text: text.trim(), language };
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error('[Whisper] Transcription FAILED:', {
+      mediaId: mediaId.substring(0, 20) + '...',
+      durationMs: duration,
+      error: err instanceof Error ? err.message : String(err),
+      errorName: err instanceof Error ? err.name : undefined,
+      stack: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join('\n') : undefined,
+    });
+    throw err;
   } finally {
-    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    // Always clean up temp file
+    if (tmpPath && fs.existsSync(tmpPath)) {
+      try {
+        fs.unlinkSync(tmpPath);
+        console.log('[Whisper] Temp file cleaned up:', tmpPath);
+      } catch (cleanupErr) {
+        console.warn('[Whisper] Failed to delete temp file:', tmpPath, cleanupErr);
+      }
+    }
   }
 }
 
