@@ -85,7 +85,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
 
     // Build prescription URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+    const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
     const prescriptionUrl = `${appUrl}/api/prescription/${prescription.id}/pdf`;
 
     // Update prescription with URL
