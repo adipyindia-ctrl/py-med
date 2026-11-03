@@ -7,23 +7,31 @@ export function getWhatsAppConfig() {
   const settings = getAppSettings();
   const phoneNumberId = settings.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '';
   const accessToken = settings.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '';
+  const businessAccountId = settings.whatsappBusinessAccountId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
   
   // Log configuration status (without exposing full token)
-  console.log('[WhatsApp Config]', {
-    phoneNumberId: phoneNumberId || 'MISSING',
-    accessTokenConfigured: !!accessToken,
-    accessTokenLength: accessToken.length,
-    accessTokenPrefix: accessToken.substring(0, 10) + '...',
-  });
-  
-  if (!phoneNumberId || !accessToken) {
-    console.error('[WhatsApp Config] CRITICAL: Missing required environment variables', {
-      hasPhoneNumberId: !!phoneNumberId,
-      hasAccessToken: !!accessToken,
+  // Only log on first call or when config changes (check via environment)
+  const lastLogged = (global as any).__whatsappConfigLogged;
+  if (!lastLogged || lastLogged.token !== accessToken) {
+    console.log('[WhatsApp Config] Status:', {
+      phoneNumberId: phoneNumberId || 'MISSING',
+      businessAccountId: businessAccountId || 'MISSING',
+      accessTokenConfigured: !!accessToken,
+      accessTokenLength: accessToken.length,
+      accessTokenSuffix: accessToken.length > 10 ? '...' + accessToken.substring(accessToken.length - 10) : '...',
     });
+    
+    if (!phoneNumberId || !accessToken || !businessAccountId) {
+      console.error('[WhatsApp Config] CRITICAL: Missing required environment variables', {
+        hasPhoneNumberId: !!phoneNumberId,
+        hasAccessToken: !!accessToken,
+        hasBusinessAccountId: !!businessAccountId,
+      });
+    }
+    (global as any).__whatsappConfigLogged = { token: accessToken };
   }
   
-  return { phoneNumberId, accessToken };
+  return { phoneNumberId, accessToken, businessAccountId };
 }
 
 function getWaClient() {
@@ -51,16 +59,23 @@ export async function sendTextMessage(to: string, body: string): Promise<void> {
     });
     console.log('[WhatsApp] Text message sent successfully:', { to, messageId: response.data?.messages?.[0]?.id });
   } catch (err) {
+    // Extract Meta API error details safely without exposing token
+    const metaError = axios.isAxiosError(err) ? err.response?.data?.error : null;
+    
     console.error('[WhatsApp] Text message send FAILED:', {
       to,
       error: err instanceof Error ? err.message : String(err),
-      response: axios.isAxiosError(err) ? {
+      httpStatus: axios.isAxiosError(err) ? err.response?.status : undefined,
+      httpStatusText: axios.isAxiosError(err) ? err.response?.statusText : undefined,
+      metaErrorMessage: metaError?.message,
+      metaErrorType: metaError?.type,
+      metaErrorCode: metaError?.code,
+      response: axios.isAxiosError(err) && !metaError ? {
         status: err.response?.status,
         statusText: err.response?.statusText,
-        data: err.response?.data,
       } : undefined,
     });
-    throw err; // Re-throw so caller knows it failed
+    throw err;
   }
 }
 
@@ -78,14 +93,21 @@ export async function sendAudioMessage(to: string, mediaId: string): Promise<voi
     });
     console.log('[WhatsApp] Audio message sent successfully:', { to, mediaId, messageId: response.data?.messages?.[0]?.id });
   } catch (err) {
+    // Extract Meta API error details safely without exposing token
+    const metaError = axios.isAxiosError(err) ? err.response?.data?.error : null;
+    
     console.error('[WhatsApp] Audio message send FAILED:', {
       to,
       mediaId,
       error: err instanceof Error ? err.message : String(err),
-      response: axios.isAxiosError(err) ? {
+      httpStatus: axios.isAxiosError(err) ? err.response?.status : undefined,
+      httpStatusText: axios.isAxiosError(err) ? err.response?.statusText : undefined,
+      metaErrorMessage: metaError?.message,
+      metaErrorType: metaError?.type,
+      metaErrorCode: metaError?.code,
+      response: axios.isAxiosError(err) && !metaError ? {
         status: err.response?.status,
         statusText: err.response?.statusText,
-        data: err.response?.data,
       } : undefined,
     });
     throw err;
@@ -149,14 +171,21 @@ export async function sendImageMessage(
     });
     console.log('[WhatsApp] Image/GIF sent successfully:', { to, imageUrl, messageId: response.data?.messages?.[0]?.id });
   } catch (err) {
+    // Extract Meta API error details safely without exposing token
+    const metaError = axios.isAxiosError(err) ? err.response?.data?.error : null;
+    
     console.error('[WhatsApp] Image/GIF send FAILED:', {
       to,
-      imageUrl,
+      imageUrl: imageUrl.substring(0, 50) + '...',
       error: err instanceof Error ? err.message : String(err),
-      response: axios.isAxiosError(err) ? {
+      httpStatus: axios.isAxiosError(err) ? err.response?.status : undefined,
+      httpStatusText: axios.isAxiosError(err) ? err.response?.statusText : undefined,
+      metaErrorMessage: metaError?.message,
+      metaErrorType: metaError?.type,
+      metaErrorCode: metaError?.code,
+      response: axios.isAxiosError(err) && !metaError ? {
         status: err.response?.status,
         statusText: err.response?.statusText,
-        data: err.response?.data,
       } : undefined,
     });
     throw err;
@@ -305,10 +334,17 @@ async function getMediaUrlWithRetry(
       
       if (!isRetryable || attempt === maxRetries) {
         // Not retryable or last attempt — fail now
+        // Extract Meta API error details safely without exposing token
+        const metaError = axios.isAxiosError(err) ? err.response?.data?.error : null;
         console.error(`[Media] [${requestId}] ✗ Meta API request FAILED (attempt ${attemptNum}/${totalAttempts}):`, {
           mediaId: mediaId.substring(0, 20) + '...',
           code: axios.isAxiosError(err) ? err.code : 'UNKNOWN',
           status: axios.isAxiosError(err) ? err.response?.status : undefined,
+          httpStatusText: axios.isAxiosError(err) ? err.response?.statusText : undefined,
+          // Extract Meta's error details (safe to log — not sensitive)
+          metaErrorMessage: metaError?.message,
+          metaErrorType: metaError?.type,
+          metaErrorCode: metaError?.code,
           error: lastError.message,
           isRetryable,
         });
@@ -373,14 +409,21 @@ export async function downloadMediaFile(mediaId: string): Promise<Buffer> {
     const duration = Date.now() - startTime;
     const axiosErr = axios.isAxiosError(err);
     
+    // Extract Meta API error details safely without exposing token
+    const metaError = axiosErr ? err.response?.data?.error : null;
+    
     console.error(`[Media] [${requestId}] ✗ Download FAILED:`, {
       requestId,
       mediaId: mediaId.substring(0, 20) + '...',
       durationMs: duration,
       errorMessage: err instanceof Error ? err.message : String(err),
       errorCode: axiosErr ? err.code : undefined,
-      errorStatus: axiosErr ? err.response?.status : undefined,
-      errorStatusText: axiosErr ? err.response?.statusText : undefined,
+      httpStatus: axiosErr ? err.response?.status : undefined,
+      httpStatusText: axiosErr ? err.response?.statusText : undefined,
+      // Extract Meta's error details
+      metaErrorMessage: metaError?.message,
+      metaErrorType: metaError?.type,
+      metaErrorCode: metaError?.code,
       isTimeout: axiosErr && (err.code === 'ETIMEDOUT' || err.code === 'ECONNABORTED'),
       isNetwork: axiosErr && (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED'),
     });
