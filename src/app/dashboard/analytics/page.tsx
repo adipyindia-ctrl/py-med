@@ -6,6 +6,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { formatCurrency } from '@/lib/utils';
 import { AnalyticsCharts } from './analytics-charts';
 import { startOfDay, endOfDay, subDays } from 'date-fns';
+import { headers } from 'next/headers';
 import {
   TrendingUp,
   Users,
@@ -16,6 +17,9 @@ import {
 } from 'lucide-react';
 
 export default async function AnalyticsPage() {
+  // Access headers to force dynamic rendering
+  await headers();
+  
   const today = new Date();
   const sevenDaysAgo = subDays(today, 7);
 
