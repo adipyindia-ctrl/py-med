@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -27,23 +28,38 @@ export async function transcribeAudioFromWhatsApp(
   mediaId: string,
 ): Promise<TranscriptResult> {
   const startTime = Date.now();
-  console.log('[Whisper] Starting transcription for mediaId:', mediaId.substring(0, 20) + '...');
+  const requestId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  
+  console.log('[Whisper] ▶ Starting transcription', {
+    requestId,
+    mediaId: mediaId.substring(0, 20) + '...',
+  });
   
   let tmpPath: string | null = null;
   
   try {
     // Step 1: Download audio from WhatsApp
-    console.log('[Whisper] Step 1: Downloading audio from WhatsApp...');
+    console.log(`[Whisper] [${requestId}] Step 1: Downloading audio from WhatsApp...`);
+    const step1Start = Date.now();
+    
     const audioBuffer = await downloadMediaFile(mediaId);
-    console.log('[Whisper] Audio downloaded successfully, size:', audioBuffer.length, 'bytes');
+    
+    const step1Duration = Date.now() - step1Start;
+    console.log(`[Whisper] [${requestId}] ✓ Step 1 complete (${step1Duration}ms):`, {
+      requestId,
+      sizeBytes: audioBuffer.length,
+      sizeKB: Math.round(audioBuffer.length / 1024),
+    });
     
     // Step 2: Save to temp file
     tmpPath = path.join(os.tmpdir(), `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.ogg`);
     fs.writeFileSync(tmpPath, audioBuffer);
-    console.log('[Whisper] Audio saved to temp file:', tmpPath);
+    console.log(`[Whisper] [${requestId}] Temp file created: ${tmpPath}`);
     
     // Step 3: Transcribe with OpenAI Whisper
-    console.log('[Whisper] Step 2: Sending to OpenAI Whisper API...');
+    console.log(`[Whisper] [${requestId}] Step 2: Sending to OpenAI Whisper API...`);
+    const step2Start = Date.now();
+    
     const openai = getOpenAIClient();
     
     const result = await openai.audio.transcriptions.create({
@@ -62,24 +78,34 @@ export async function transcribeAudioFromWhatsApp(
         ? ((result as { language: string }).language ?? 'hi')
         : 'hi';
 
-    const duration = Date.now() - startTime;
-    console.log('[Whisper] Transcription successful:', {
+    const step2Duration = Date.now() - step2Start;
+    const totalDuration = Date.now() - startTime;
+    
+    console.log(`[Whisper] [${requestId}] ✓ Transcription successful:`, {
+      requestId,
       mediaId: mediaId.substring(0, 20) + '...',
       language,
       textLength: text.length,
-      textPreview: text.substring(0, 50) + '...',
-      durationMs: duration,
+      textPreview: text.substring(0, 60) + (text.length > 60 ? '...' : ''),
+      step1Ms: Date.now() - step1Start - step2Start,
+      step2Ms: step2Duration,
+      totalMs: totalDuration,
     });
 
     return { text: text.trim(), language };
   } catch (err) {
     const duration = Date.now() - startTime;
-    console.error('[Whisper] Transcription FAILED:', {
+    const axiosErr = axios.isAxiosError(err);
+    
+    console.error(`[Whisper] [${requestId}] ✗ Transcription FAILED:`, {
+      requestId,
       mediaId: mediaId.substring(0, 20) + '...',
       durationMs: duration,
-      error: err instanceof Error ? err.message : String(err),
+      errorMessage: err instanceof Error ? err.message : String(err),
       errorName: err instanceof Error ? err.name : undefined,
-      stack: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join('\n') : undefined,
+      errorCode: axiosErr ? err.code : undefined,
+      isTimeout: (err instanceof Error && (err.message.includes('timeout') || err.message.includes('ETIMEDOUT'))) || (axiosErr && err.code === 'ETIMEDOUT'),
+      isNetwork: (err instanceof Error && (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND'))) || (axiosErr && (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND')),
     });
     throw err;
   } finally {
@@ -87,9 +113,9 @@ export async function transcribeAudioFromWhatsApp(
     if (tmpPath && fs.existsSync(tmpPath)) {
       try {
         fs.unlinkSync(tmpPath);
-        console.log('[Whisper] Temp file cleaned up:', tmpPath);
+        console.log(`[Whisper] [${requestId}] Temp file cleaned up`);
       } catch (cleanupErr) {
-        console.warn('[Whisper] Failed to delete temp file:', tmpPath, cleanupErr);
+        console.warn(`[Whisper] [${requestId}] Failed to delete temp file:`, cleanupErr);
       }
     }
   }

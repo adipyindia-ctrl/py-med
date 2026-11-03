@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { prisma } from '@/lib/prisma/client';
 import {
   sendTextMessage,
@@ -107,12 +108,19 @@ async function resolveInput(
   }
 
   if (messageType === 'audio' && audioMediaId) {
+    const requestId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     try {
-      console.log('[Voice] Starting transcription for audioMediaId:', audioMediaId.substring(0, 20) + '...');
+      console.log(`[Voice] [${requestId}] ▶ Starting voice transcription`, {
+        requestId,
+        audioMediaId: audioMediaId.substring(0, 20) + '...',
+      });
+      
+      const transcriptionStart = Date.now();
       const { text, language } = await transcribeAudioFromWhatsApp(audioMediaId);
+      const transcriptionDuration = Date.now() - transcriptionStart;
       
       if (!text || text.trim().length === 0) {
-        console.warn('[Voice] Transcription returned empty text');
+        console.warn(`[Voice] [${requestId}] Transcription returned empty text`);
         return null;
       }
       
@@ -120,21 +128,28 @@ async function resolveInput(
       const lang: DetectedLanguage =
         language === 'hi' || language === 'ur' ? 'hindi' : detectLanguage(text);
       
-      console.log('[Voice] Transcription successful:', {
+      console.log(`[Voice] [${requestId}] ✓ Voice transcription successful:`, {
+        requestId,
         audioMediaId: audioMediaId.substring(0, 20) + '...',
         language,
         detectedLang: lang,
         textLength: text.length,
+        textPreview: text.substring(0, 60) + (text.length > 60 ? '...' : ''),
+        durationMs: transcriptionDuration,
       });
       
       return { text, isVoice: true, lang, rawTranscript: text };
     } catch (err) {
-      console.error('[Voice] Transcription error:', {
+      const axiosErr = axios.isAxiosError(err);
+      
+      console.error(`[Voice] [${requestId}] ✗ Voice transcription error:`, {
+        requestId,
         audioMediaId: audioMediaId.substring(0, 20) + '...',
-        error: err instanceof Error ? err.message : String(err),
+        errorMessage: err instanceof Error ? err.message : String(err),
         errorType: err instanceof Error ? err.name : typeof err,
-        isTimeout: err instanceof Error && (err.message.includes('ETIMEDOUT') || err.message.includes('timeout')),
-        isNetwork: err instanceof Error && (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND')),
+        errorCode: axiosErr ? err.code : undefined,
+        isTimeout: (err instanceof Error && (err.message.includes('ETIMEDOUT') || err.message.includes('timeout'))) || (axiosErr && err.code === 'ETIMEDOUT'),
+        isNetwork: (err instanceof Error && (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND'))) || (axiosErr && (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND')),
       });
       
       // Return null to trigger error message to user

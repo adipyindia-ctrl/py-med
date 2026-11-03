@@ -255,32 +255,92 @@ export async function sendButtonMessage(
 
 // ─── Media download ───────────────────────────────────────────────────────────
 
+/**
+ * Helper to fetch media URL from Meta Graph API with retry logic.
+ * Meta API can be slow under load — we retry with exponential backoff.
+ */
+async function getMediaUrlWithRetry(
+  mediaId: string,
+  accessToken: string,
+  maxRetries: number = 2,
+): Promise<string> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Media] Fetching media URL from Meta API (attempt ${attempt + 1}/${maxRetries + 1})...`);
+      
+      const metaRes = await axios.get(
+        `https://graph.facebook.com/${API_VERSION}/${mediaId}`,
+        { 
+          headers: { Authorization: `Bearer ${accessToken}` },
+          timeout: 20000, // 20 second timeout per attempt (increased from 15s)
+        },
+      );
+      
+      const mediaUrl: string = metaRes.data?.url;
+      if (!mediaUrl) {
+        throw new Error('Media URL not found in Meta API response');
+      }
+      
+      console.log('[Media] ✓ Media URL retrieved from Meta API');
+      return mediaUrl;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      
+      // Check if error is retryable (timeout, connection issues, 5xx)
+      const isRetryable = 
+        axios.isAxiosError(err) && (
+          err.code === 'ETIMEDOUT' ||
+          err.code === 'ECONNABORTED' ||
+          err.code === 'ENOTFOUND' ||
+          (err.response?.status && err.response.status >= 500)
+        );
+      
+      if (!isRetryable || attempt === maxRetries) {
+        // Not retryable or last attempt — fail now
+        console.error(`[Media] Meta API request FAILED (attempt ${attempt + 1}/${maxRetries + 1}):`, {
+          mediaId: mediaId.substring(0, 20) + '...',
+          code: axios.isAxiosError(err) ? err.code : 'UNKNOWN',
+          status: axios.isAxiosError(err) ? err.response?.status : undefined,
+          error: lastError.message,
+          isRetryable,
+          attempt,
+        });
+        throw lastError;
+      }
+      
+      // Retryable error and not last attempt — wait and retry
+      const backoffMs = 500 * Math.pow(2, attempt); // 500ms, 1s, 2s, 4s...
+      console.warn(`[Media] Meta API timeout (attempt ${attempt + 1}/${maxRetries + 1}) — retrying in ${backoffMs}ms:`, lastError.message);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    }
+  }
+  
+  throw lastError || new Error('Failed to fetch media URL after retries');
+}
+
 export async function downloadMediaFile(mediaId: string): Promise<Buffer> {
   const { accessToken } = getWhatsAppConfig();
   const startTime = Date.now();
+  const requestId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
   
-  console.log('[Media] Starting download for mediaId:', mediaId.substring(0, 20) + '...');
+  console.log('[Media] ▶ Starting media download', {
+    requestId,
+    mediaId: mediaId.substring(0, 20) + '...',
+  });
   
   try {
-    // Step 1: Get media URL from Meta API (with timeout)
-    console.log('[Media] Step 1: Fetching media URL from Meta API...');
-    const metaRes = await axios.get(
-      `https://graph.facebook.com/${API_VERSION}/${mediaId}`,
-      { 
-        headers: { Authorization: `Bearer ${accessToken}` },
-        timeout: 15000, // 15 second timeout for Meta API
-      },
-    );
+    // Step 1: Get media URL from Meta API (with retry)
+    console.log(`[Media] [${requestId}] Step 1: Fetching media URL from Meta API...`);
+    const mediaUrl = await getMediaUrlWithRetry(mediaId, accessToken, 2);
+    const step1Duration = Date.now() - startTime;
+    console.log(`[Media] [${requestId}] ✓ Step 1 complete (${step1Duration}ms)`);
     
-    const mediaUrl: string = metaRes.data.url;
-    if (!mediaUrl) {
-      throw new Error('Media URL not found in Meta API response');
-    }
+    // Step 2: Download binary from media URL
+    console.log(`[Media] [${requestId}] Step 2: Downloading audio file from CDN (${mediaUrl.substring(0, 50)}...)...`);
+    const step2Start = Date.now();
     
-    console.log('[Media] Step 1: Got media URL successfully');
-    console.log('[Media] Step 2: Downloading audio file from Meta CDN...');
-    
-    // Step 2: Download binary from media URL (with timeout and retry)
     const fileRes = await axios.get(mediaUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
       responseType: 'arraybuffer',
@@ -289,25 +349,34 @@ export async function downloadMediaFile(mediaId: string): Promise<Buffer> {
     });
     
     const buffer = Buffer.from(fileRes.data);
-    const duration = Date.now() - startTime;
+    const step2Duration = Date.now() - step2Start;
+    const totalDuration = Date.now() - startTime;
     
-    console.log('[Media] Download successful:', {
+    console.log(`[Media] [${requestId}] ✓ Download successful:`, {
+      requestId,
       mediaId: mediaId.substring(0, 20) + '...',
       sizeBytes: buffer.length,
       sizeKB: Math.round(buffer.length / 1024),
-      durationMs: duration,
+      step1Ms: step1Duration,
+      step2Ms: step2Duration,
+      totalMs: totalDuration,
     });
     
     return buffer;
   } catch (err) {
     const duration = Date.now() - startTime;
-    console.error('[Media] Download FAILED:', {
+    const axiosErr = axios.isAxiosError(err);
+    
+    console.error(`[Media] [${requestId}] ✗ Download FAILED:`, {
+      requestId,
       mediaId: mediaId.substring(0, 20) + '...',
       durationMs: duration,
-      error: err instanceof Error ? err.message : String(err),
-      code: axios.isAxiosError(err) ? err.code : undefined,
-      status: axios.isAxiosError(err) ? err.response?.status : undefined,
-      statusText: axios.isAxiosError(err) ? err.response?.statusText : undefined,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      errorCode: axiosErr ? err.code : undefined,
+      errorStatus: axiosErr ? err.response?.status : undefined,
+      errorStatusText: axiosErr ? err.response?.statusText : undefined,
+      isTimeout: axiosErr && (err.code === 'ETIMEDOUT' || err.code === 'ECONNABORTED'),
+      isNetwork: axiosErr && (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED'),
     });
     throw err;
   }
