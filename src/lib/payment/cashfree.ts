@@ -5,17 +5,33 @@ import { generateOrderId } from '@/lib/utils';
 
 const APP_ID = process.env.CASHFREE_APP_ID!;
 const SECRET_KEY = process.env.CASHFREE_SECRET_KEY!;
-const API_URL = process.env.CASHFREE_API_URL ?? 'https://sandbox.cashfree.com/pg';
 
-const cashfreeAxios = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'x-client-id': APP_ID,
-    'x-client-secret': SECRET_KEY,
-    'x-api-version': CASHFREE_API_VERSION,
-    'Content-Type': 'application/json',
-  },
-});
+/**
+ * Derive Cashfree base URL from environment.
+ * Priority: CASHFREE_API_URL (explicit) > CASHFREE_ENV ('production' → prod URL) > sandbox default.
+ */
+function getCashfreeApiUrl(): string {
+  if (process.env.CASHFREE_API_URL) return process.env.CASHFREE_API_URL;
+  if (process.env.CASHFREE_ENV === 'production') return 'https://api.cashfree.com/pg';
+  return 'https://sandbox.cashfree.com/pg';
+}
+
+/**
+ * Create a fresh Cashfree axios instance per call so that runtime changes
+ * to CASHFREE_ENV / CASHFREE_API_URL (via Settings UI) take effect without
+ * requiring a server restart.
+ */
+function getCashfreeClient() {
+  return axios.create({
+    baseURL: getCashfreeApiUrl(),
+    headers: {
+      'x-client-id': process.env.CASHFREE_APP_ID ?? APP_ID,
+      'x-client-secret': process.env.CASHFREE_SECRET_KEY ?? SECRET_KEY,
+      'x-api-version': CASHFREE_API_VERSION,
+      'Content-Type': 'application/json',
+    },
+  });
+}
 
 export interface CreatePaymentLinkInput {
   amount: number;
@@ -79,7 +95,7 @@ export async function createCashfreePaymentLink(
     },
   };
 
-  const response = await cashfreeAxios.post<CashfreePaymentLinkResponse>('/links', payload);
+  const response = await getCashfreeClient().post<CashfreePaymentLinkResponse>('/links', payload);
   return response.data;
 }
 
@@ -89,7 +105,7 @@ export async function fetchLinkStatus(linkId: string): Promise<{
   link_amount_paid: number;
   cf_link_id: string;
 }> {
-  const response = await cashfreeAxios.get(`/links/${linkId}`);
+  const response = await getCashfreeClient().get(`/links/${linkId}`);
   return response.data;
 }
 
@@ -98,7 +114,7 @@ export async function fetchOrderStatus(orderId: string): Promise<{
   order_amount: number;
   cf_order_id: string;
 }> {
-  const response = await cashfreeAxios.get(`/orders/${orderId}`);
+  const response = await getCashfreeClient().get(`/orders/${orderId}`);
   return response.data;
 }
 
@@ -107,9 +123,11 @@ export function verifyCashfreeWebhook(
   rawBody: string,
   signature: string,
 ): boolean {
+  // Read SECRET_KEY at call time so Settings UI updates take effect without restart
+  const secret = process.env.CASHFREE_SECRET_KEY ?? SECRET_KEY;
   const message = `${timestamp}${rawBody}`;
   const expectedSignature = crypto
-    .createHmac('sha256', SECRET_KEY)
+    .createHmac('sha256', secret)
     .update(message)
     .digest('base64');
   return expectedSignature === signature;

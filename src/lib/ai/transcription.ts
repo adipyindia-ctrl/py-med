@@ -1,9 +1,14 @@
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { downloadMediaFile } from '@/lib/whatsapp/client';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+/** Create an OpenAI client at call time so Settings UI key changes take effect without restart */
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  return new OpenAI({ apiKey });
+}
 
 export interface TranscriptResult {
   text: string;
@@ -17,8 +22,9 @@ export interface TranscriptResult {
 export async function transcribeAudioFromWhatsApp(
   mediaId: string,
 ): Promise<TranscriptResult> {
+  const openai = getOpenAIClient();
   const audioBuffer = await downloadMediaFile(mediaId);
-  const tmpPath = path.join('/tmp', `audio_${Date.now()}.ogg`);
+  const tmpPath = path.join(os.tmpdir(), `audio_${Date.now()}.ogg`);
   fs.writeFileSync(tmpPath, audioBuffer);
 
   try {
@@ -53,6 +59,7 @@ export async function extractSymptomsFromText(transcript: string): Promise<{
   symptoms: string[];
   summary: string;
 }> {
+  const openai = getOpenAIClient();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
@@ -94,6 +101,7 @@ export async function extractFieldFromVoice(
   transcript: string,
   field: 'name' | 'age' | 'gender' | 'duration' | 'allergies' | 'medicines' | 'symptoms',
 ): Promise<string> {
+  const openai = getOpenAIClient();
   const fieldInstructions: Record<string, string> = {
     name: 'Extract the person\'s full name. Return only the name, nothing else.',
     age: 'Extract the age as a number only (e.g. "35"). Return only the digits.',
@@ -137,6 +145,7 @@ export async function generateAISummaryForDoctor(consultation: {
   currentMedicines?: string;
   voiceTranscript?: string;
 }): Promise<string> {
+  const openai = getOpenAIClient();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [

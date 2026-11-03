@@ -1,6 +1,5 @@
 export const instant = false;
 import { prisma } from '@/lib/prisma/client';
-import { auth } from '@/lib/auth/config';
 import { notFound } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,8 +25,6 @@ interface PageProps {
 }
 
 export default async function ConsultationDetailPage({ params }: PageProps) {
-  const session = await auth();
-
   const { id } = await params;
 
   const consultation = await prisma.consultation.findUnique({

@@ -2,7 +2,11 @@ import { EMERGENCY_SYMPTOMS } from '@/lib/constants';
 import type { SafetyScreenResult, UrgencyLevel } from '@/types';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+/** Create an OpenAI client at call time so Settings UI key changes take effect without restart */
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  return new OpenAI({ apiKey });
+}
 
 export async function runSafetyScreening(
   symptoms: string[],
@@ -26,6 +30,7 @@ export async function runSafetyScreening(
 
   // AI-based screening for nuanced cases
   try {
+    const openai = getOpenAIClient();
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth/config';
 import axios from 'axios';
 import { getAppSettings } from '@/lib/settings';
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const settings = getAppSettings();
 

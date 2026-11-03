@@ -64,7 +64,7 @@ export async function generatePrescriptionHTML(data: PrescriptionData): Promise<
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; background: white; }
     .container { max-width: 800px; margin: 0 auto; padding: 32px; }
-    .header { border-bottom: 3px solid #2563eb; pb-4 margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .header { border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; }
     .logo-section h1 { font-size: 24px; font-weight: 700; color: #2563eb; }
     .logo-section p { font-size: 12px; color: #6b7280; margin-top: 2px; }
     .doctor-info { text-align: right; }

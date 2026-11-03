@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import axios from 'axios';
 import { getWhatsAppConfig } from '@/lib/whatsapp/client';
 import { getAppSettings } from '@/lib/settings';
@@ -13,7 +14,7 @@ const WHATSAPP_API_VERSION = 'v18.0';
  * return the media_id for sending as audio message.
  */
 export async function textToSpeechHindi(text: string): Promise<string | null> {
-  const tmpPath = path.join('/tmp', `tts_${Date.now()}.mp3`);
+  const tmpPath = path.join(os.tmpdir(), `tts_${Date.now()}.mp3`);
   try {
     const settings = getAppSettings();
     const apiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY || '';

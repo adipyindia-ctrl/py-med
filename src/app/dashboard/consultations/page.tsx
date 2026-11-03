@@ -1,6 +1,5 @@
 export const instant = false;
 import { prisma } from '@/lib/prisma/client';
-import { auth } from '@/lib/auth/config';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { ConsultationTable } from '@/components/consultation/consultation-table';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -21,8 +20,6 @@ interface PageProps {
 }
 
 export default async function ConsultationsPage({ searchParams }: PageProps) {
-  const session = await auth();
-
   const { status = '', page = '1' } = await searchParams;
   const pageNum = parseInt(page, 10);
   const limit = 20;

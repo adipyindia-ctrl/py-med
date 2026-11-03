@@ -1,5 +1,4 @@
 export const instant = false;
-import { auth } from '@/lib/auth/config';
 import { prisma } from '@/lib/prisma/client';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,8 +16,6 @@ import {
 } from 'lucide-react';
 
 export default async function AnalyticsPage() {
-  const session = await auth();
-
   const today = new Date();
   const sevenDaysAgo = subDays(today, 7);
 
