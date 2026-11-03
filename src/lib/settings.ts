@@ -33,26 +33,50 @@ export function getAppSettings(): AppSettings {
   }
 
   return {
+    // Prioritize environment variables for secret tokens (they are refreshed via Vercel dashboard)
     whatsappAccessToken:
-      fileSettings.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '',
+      // Remove surrounding quotes if any
+      (process.env.WHATSAPP_ACCESS_TOKEN?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.whatsappAccessToken?.replace(/^"|"$/g, '').trim()) ||
+      '',
     whatsappPhoneNumberId:
-      fileSettings.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+      (process.env.WHATSAPP_PHONE_NUMBER_ID?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.whatsappPhoneNumberId?.replace(/^"|"$/g, '').trim()) ||
+      '',
     whatsappBusinessAccountId:
-      fileSettings.whatsappBusinessAccountId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+      (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.whatsappBusinessAccountId?.replace(/^"|"$/g, '').trim()) ||
+      '',
     whatsappVerifyToken:
-      fileSettings.whatsappVerifyToken || process.env.WHATSAPP_VERIFY_TOKEN || 'PYINDIA',
+      (process.env.WHATSAPP_VERIFY_TOKEN?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.whatsappVerifyToken?.replace(/^"|"$/g, '').trim()) ||
+      'PYINDIA',
     whatsappTestRecipient:
-      fileSettings.whatsappTestRecipient || process.env.WHATSAPP_TEST_RECIPIENT || '',
+      (process.env.WHATSAPP_TEST_RECIPIENT?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.whatsappTestRecipient?.replace(/^"|"$/g, '').trim()) ||
+      '',
     openaiApiKey:
-      fileSettings.openaiApiKey || process.env.OPENAI_API_KEY || '',
+      (process.env.OPENAI_API_KEY?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.openaiApiKey?.replace(/^"|"$/g, '').trim()) ||
+      '',
     cashfreeAppId:
-      fileSettings.cashfreeAppId || process.env.CASHFREE_APP_ID || '',
+      (process.env.CASHFREE_APP_ID?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.cashfreeAppId?.replace(/^"|"$/g, '').trim()) ||
+      '',
     cashfreeSecretKey:
-      fileSettings.cashfreeSecretKey || process.env.CASHFREE_SECRET_KEY || '',
+      (process.env.CASHFREE_SECRET_KEY?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.cashfreeSecretKey?.replace(/^"|"$/g, '').trim()) ||
+      '',
     cashfreeEnv:
-      fileSettings.cashfreeEnv || process.env.CASHFREE_ENV || 'sandbox',
+      (process.env.CASHFREE_ENV?.replace(/^"|"$/g, '').trim()) ||
+      (fileSettings.cashfreeEnv?.replace(/^"|"$/g, '').trim()) ||
+      'sandbox',
     consultationFee:
-      Number(fileSettings.consultationFee || process.env.CONSULTATION_FEE || 300),
+      Number(
+        process.env.CONSULTATION_FEE?.replace(/^"|"$/g, '').trim() ||
+          fileSettings.consultationFee?.toString() ||
+          '300'
+      ),
   };
 }
 
