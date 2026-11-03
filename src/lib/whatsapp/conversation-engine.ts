@@ -37,8 +37,14 @@ async function sendGif(to: string, gifKey: string): Promise<void> {
   if (!url) return;
   try {
     await sendImageMessage(to, url);
+    console.log('[ConversationEngine] GIF sent successfully:', { to, gifKey });
   } catch (err) {
-    console.warn('[GIF] Failed to send gif for step', gifKey, err instanceof Error ? err.message : err);
+    console.error('[ConversationEngine] GIF send failed (non-critical):', {
+      to,
+      gifKey,
+      url,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -53,8 +59,15 @@ async function smartReply(
   // Always send text first (guaranteed delivery)
   try {
     await sendTextMessage(to, textMsg);
+    console.log('[ConversationEngine] Text reply sent successfully to', to);
   } catch (err) {
-    console.warn('[Reply] Text send failed:', err instanceof Error ? err.message : err);
+    console.error('[ConversationEngine] CRITICAL: Text reply failed:', {
+      to,
+      messagePreview: textMsg.substring(0, 100),
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    // Don't throw - let the conversation continue even if one message fails
   }
 
   // If patient used voice, also send audio reply
@@ -63,9 +76,13 @@ async function smartReply(
       const mediaId = await textToSpeechHindi(textMsg);
       if (mediaId) {
         await sendAudioMessage(to, mediaId);
+        console.log('[ConversationEngine] Audio reply sent successfully to', to);
       }
     } catch (err) {
-      console.warn('[Reply] Audio send failed:', err instanceof Error ? err.message : err);
+      console.error('[ConversationEngine] Audio reply failed (non-critical):', {
+        to,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
@@ -114,78 +131,100 @@ export async function handleIncomingMessage(
   textBody?: string,
   audioMediaId?: string,
 ): Promise<void> {
-  // 1. Resolve input first so we have language for welcome message
-  const input = await resolveInput(messageType, textBody, audioMediaId);
-  if (!input) {
-    try {
-      await sendTextMessage(
-        from,
-        '⚠️ Aapka message samajh nahi aaya. Kripya text ya voice note mein dobara bhejein.',
-      );
-    } catch { /* ignore */ }
-    return;
-  }
+  console.log('[ConversationEngine] ▶ START handleIncomingMessage', { from, messageType, hasText: !!textBody, hasAudio: !!audioMediaId });
+  
+  try {
+    // 1. Resolve input first so we have language for welcome message
+    const input = await resolveInput(messageType, textBody, audioMediaId);
+    if (!input) {
+      console.warn('[ConversationEngine] Failed to resolve input, sending error message');
+      try {
+        await sendTextMessage(
+          from,
+          '⚠️ Aapka message samajh nahi aaya. Kripya text ya voice note mein dobara bhejein.',
+        );
+      } catch { /* ignore */ }
+      return;
+    }
 
-  // 2. Find or create patient
-  let patient = await prisma.patient.findUnique({ where: { phone: from } });
-  if (!patient) {
-    patient = await prisma.patient.create({ data: { name: 'Unknown', phone: from } });
-  }
+    console.log('[ConversationEngine] Input resolved:', { text: input.text.substring(0, 50), isVoice: input.isVoice, lang: input.lang });
 
-  // 3. Find active consultation
-  let consultation = await prisma.consultation.findFirst({
-    where: {
-      patientId: patient.id,
-      status: { notIn: ['COMPLETED', 'CANCELLED', 'EMERGENCY'] },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+    // 2. Find or create patient
+    let patient = await prisma.patient.findUnique({ where: { phone: from } });
+    if (!patient) {
+      console.log('[ConversationEngine] Creating new patient:', from);
+      patient = await prisma.patient.create({ data: { name: 'Unknown', phone: from } });
+    }
 
-  // 4. New session → create + send welcome
-  if (!consultation) {
-    consultation = await prisma.consultation.create({
-      data: {
+    // 3. Find active consultation
+    let consultation = await prisma.consultation.findFirst({
+      where: {
         patientId: patient.id,
-        conversationState: 'COLLECTING_NAME',
-        symptoms: '[]',
-        conversationHistory: '[]',
-        detectedLanguage: input.lang,
+        status: { notIn: ['COMPLETED', 'CANCELLED', 'EMERGENCY'] },
       },
+      orderBy: { createdAt: 'desc' },
     });
 
-    const welcomeText = getPrompt('ask_name', input.lang);
+    // 4. New session → create + send welcome
+    if (!consultation) {
+      console.log('[ConversationEngine] Creating new consultation for patient:', patient.id);
+      consultation = await prisma.consultation.create({
+        data: {
+          patientId: patient.id,
+          conversationState: 'COLLECTING_NAME',
+          symptoms: '[]',
+          conversationHistory: '[]',
+          detectedLanguage: input.lang,
+        },
+      });
 
-    // Welcome GIF first — sets a warm, professional tone
-    await sendGif(from, 'welcome');
-    await smartReply(from, welcomeText, input.lang, input.isVoice);
-    return;
-  }
+      const welcomeText = getPrompt('ask_name', input.lang);
 
-  const state = consultation.conversationState as ConversationState;
-  const history = safeJsonParse<ConversationMessage[]>(consultation.conversationHistory, []);
+      // Welcome GIF first — sets a warm, professional tone
+      console.log('[ConversationEngine] Sending welcome message');
+      await sendGif(from, 'welcome');
+      await smartReply(from, welcomeText, input.lang, input.isVoice);
+      console.log('[ConversationEngine] ✓ END handleIncomingMessage (welcome sent)');
+      return;
+    }
 
-  // ── Sticky language — persist across session
-  let { text, isVoice, lang } = input;
-  const storedLang = (consultation as Record<string, unknown>).detectedLanguage as DetectedLanguage | undefined;
+    const state = consultation.conversationState as ConversationState;
+    const history = safeJsonParse<ConversationMessage[]>(consultation.conversationHistory, []);
 
-  // If current input looks English but we already know patient speaks Hindi/Hinglish, keep it
-  if (lang === 'english' && storedLang && storedLang !== 'english') {
-    lang = storedLang;
-  }
+    console.log('[ConversationEngine] Active consultation found:', { consultationId: consultation.id, state });
 
-  // Save newly detected non-English language on first detection
-  if ((lang === 'hindi' || lang === 'hinglish') && storedLang !== lang) {
-    await prisma.consultation.update({
-      where: { id: consultation.id },
-      data: { detectedLanguage: lang },
+    // ── Sticky language — persist across session
+    let { text, isVoice, lang } = input;
+    const storedLang = (consultation as Record<string, unknown>).detectedLanguage as DetectedLanguage | undefined;
+
+    // If current input looks English but we already know patient speaks Hindi/Hinglish, keep it
+    if (lang === 'english' && storedLang && storedLang !== 'english') {
+      lang = storedLang;
+    }
+
+    // Save newly detected non-English language on first detection
+    if ((lang === 'hindi' || lang === 'hinglish') && storedLang !== lang) {
+      await prisma.consultation.update({
+        where: { id: consultation.id },
+        data: { detectedLanguage: lang },
+      });
+    }
+
+    // Log patient message
+    history.push({ role: 'patient', message: text, timestamp: new Date() });
+
+    // 5. Route to state handler
+    console.log('[ConversationEngine] Routing to state handler:', state);
+    await handleState(from, state, text, isVoice, lang, patient, consultation.id, history);
+    console.log('[ConversationEngine] ✓ END handleIncomingMessage (state handler completed)');
+  } catch (err) {
+    console.error('[ConversationEngine] ✗ UNHANDLED ERROR in handleIncomingMessage:', {
+      from,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
     });
+    throw err;
   }
-
-  // Log patient message
-  history.push({ role: 'patient', message: text, timestamp: new Date() });
-
-  // 5. Route to state handler
-  await handleState(from, state, text, isVoice, lang, patient, consultation.id, history);
 }
 
 // ─── Reply helper that also persists history ─────────────────────────────────

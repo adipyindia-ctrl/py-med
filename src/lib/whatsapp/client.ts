@@ -7,6 +7,22 @@ export function getWhatsAppConfig() {
   const settings = getAppSettings();
   const phoneNumberId = settings.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '';
   const accessToken = settings.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '';
+  
+  // Log configuration status (without exposing full token)
+  console.log('[WhatsApp Config]', {
+    phoneNumberId: phoneNumberId || 'MISSING',
+    accessTokenConfigured: !!accessToken,
+    accessTokenLength: accessToken.length,
+    accessTokenPrefix: accessToken.substring(0, 10) + '...',
+  });
+  
+  if (!phoneNumberId || !accessToken) {
+    console.error('[WhatsApp Config] CRITICAL: Missing required environment variables', {
+      hasPhoneNumberId: !!phoneNumberId,
+      hasAccessToken: !!accessToken,
+    });
+  }
+  
   return { phoneNumberId, accessToken };
 }
 
@@ -25,26 +41,55 @@ function getWaClient() {
 
 export async function sendTextMessage(to: string, body: string): Promise<void> {
   const wa = getWaClient();
-  await wa.post('/messages', {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'text',
-    text: { body, preview_url: false },
-  });
+  try {
+    const response = await wa.post('/messages', {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'text',
+      text: { body, preview_url: false },
+    });
+    console.log('[WhatsApp] Text message sent successfully:', { to, messageId: response.data?.messages?.[0]?.id });
+  } catch (err) {
+    console.error('[WhatsApp] Text message send FAILED:', {
+      to,
+      error: err instanceof Error ? err.message : String(err),
+      response: axios.isAxiosError(err) ? {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+      } : undefined,
+    });
+    throw err; // Re-throw so caller knows it failed
+  }
 }
 
 // ─── Audio (by media_id) ──────────────────────────────────────────────────────
 
 export async function sendAudioMessage(to: string, mediaId: string): Promise<void> {
   const wa = getWaClient();
-  await wa.post('/messages', {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'audio',
-    audio: { id: mediaId },
-  });
+  try {
+    const response = await wa.post('/messages', {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'audio',
+      audio: { id: mediaId },
+    });
+    console.log('[WhatsApp] Audio message sent successfully:', { to, mediaId, messageId: response.data?.messages?.[0]?.id });
+  } catch (err) {
+    console.error('[WhatsApp] Audio message send FAILED:', {
+      to,
+      mediaId,
+      error: err instanceof Error ? err.message : String(err),
+      response: axios.isAxiosError(err) ? {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+      } : undefined,
+    });
+    throw err;
+  }
 }
 
 // ─── Audio (by URL — for hosted files) ───────────────────────────────────────
@@ -91,16 +136,31 @@ export async function sendImageMessage(
   caption?: string,
 ): Promise<void> {
   const wa = getWaClient();
-  await wa.post('/messages', {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'image',
-    image: {
-      link: imageUrl,
-      ...(caption ? { caption } : {}),
-    },
-  });
+  try {
+    const response = await wa.post('/messages', {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'image',
+      image: {
+        link: imageUrl,
+        ...(caption ? { caption } : {}),
+      },
+    });
+    console.log('[WhatsApp] Image/GIF sent successfully:', { to, imageUrl, messageId: response.data?.messages?.[0]?.id });
+  } catch (err) {
+    console.error('[WhatsApp] Image/GIF send FAILED:', {
+      to,
+      imageUrl,
+      error: err instanceof Error ? err.message : String(err),
+      response: axios.isAxiosError(err) ? {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+      } : undefined,
+    });
+    throw err;
+  }
 }
 
 // ─── Interactive buttons ──────────────────────────────────────────────────────
