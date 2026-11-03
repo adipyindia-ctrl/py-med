@@ -183,21 +183,74 @@ export async function handleIncomingMessage(
 
     console.log('[ConversationEngine] Input resolved:', { text: input.text.substring(0, 50), isVoice: input.isVoice, lang: input.lang });
 
-    // 2. Find or create patient
-    let patient = await prisma.patient.findUnique({ where: { phone: from } });
+    // 2. Find or create patient — with retry logic for connection timeouts
+    let patient: any;
+    let dbRetries = 0;
+    const maxDbRetries = 2;
+    
+    while (dbRetries <= maxDbRetries) {
+      try {
+        patient = await prisma.patient.findUnique({ where: { phone: from } });
+        break; // Success
+      } catch (dbErr: any) {
+        dbRetries++;
+        if (dbErr.code === 'P5009' || dbErr.message?.includes('timeout') || dbErr.message?.includes('ETIMEDOUT')) {
+          console.warn(`[ConversationEngine] DB connection timeout on findUnique (attempt ${dbRetries}/${maxDbRetries}):`, dbErr.message);
+          if (dbRetries <= maxDbRetries) {
+            await new Promise(r => setTimeout(r, 500 * dbRetries)); // Exponential backoff: 500ms, 1s, 1.5s
+            continue;
+          }
+        }
+        throw dbErr;
+      }
+    }
+    
     if (!patient) {
       console.log('[ConversationEngine] Creating new patient:', from);
-      patient = await prisma.patient.create({ data: { name: 'Unknown', phone: from } });
+      dbRetries = 0;
+      while (dbRetries <= maxDbRetries) {
+        try {
+          patient = await prisma.patient.create({ data: { name: 'Unknown', phone: from } });
+          break; // Success
+        } catch (dbErr: any) {
+          dbRetries++;
+          if (dbErr.code === 'P5009' || dbErr.message?.includes('timeout') || dbErr.message?.includes('ETIMEDOUT')) {
+            console.warn(`[ConversationEngine] DB connection timeout on create (attempt ${dbRetries}/${maxDbRetries}):`, dbErr.message);
+            if (dbRetries <= maxDbRetries) {
+              await new Promise(r => setTimeout(r, 500 * dbRetries));
+              continue;
+            }
+          }
+          throw dbErr;
+        }
+      }
     }
 
     // 3. Find active consultation
-    let consultation = await prisma.consultation.findFirst({
-      where: {
-        patientId: patient.id,
-        status: { notIn: ['COMPLETED', 'CANCELLED', 'EMERGENCY'] },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    let consultation: any;
+    dbRetries = 0;
+    while (dbRetries <= maxDbRetries) {
+      try {
+        consultation = await prisma.consultation.findFirst({
+          where: {
+            patientId: patient.id,
+            status: { notIn: ['COMPLETED', 'CANCELLED', 'EMERGENCY'] },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        break; // Success
+      } catch (dbErr: any) {
+        dbRetries++;
+        if (dbErr.code === 'P5009' || dbErr.message?.includes('timeout') || dbErr.message?.includes('ETIMEDOUT')) {
+          console.warn(`[ConversationEngine] DB connection timeout on findFirst (attempt ${dbRetries}/${maxDbRetries}):`, dbErr.message);
+          if (dbRetries <= maxDbRetries) {
+            await new Promise(r => setTimeout(r, 500 * dbRetries));
+            continue;
+          }
+        }
+        throw dbErr;
+      }
+    }
 
     // 4. New session → create + send welcome
     if (!consultation) {
