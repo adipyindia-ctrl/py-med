@@ -262,19 +262,24 @@ export async function sendButtonMessage(
 async function getMediaUrlWithRetry(
   mediaId: string,
   accessToken: string,
+  requestId: string,
   maxRetries: number = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const attemptNum = attempt + 1;
+    const totalAttempts = maxRetries + 1;
+    
     try {
-      console.log(`[Media] Fetching media URL from Meta API (attempt ${attempt + 1}/${maxRetries + 1})...`);
+      const attemptStart = Date.now();
+      console.log(`[Media] [${requestId}] Fetching media URL from Meta API (attempt ${attemptNum}/${totalAttempts})...`);
       
       const metaRes = await axios.get(
         `https://graph.facebook.com/${API_VERSION}/${mediaId}`,
         { 
           headers: { Authorization: `Bearer ${accessToken}` },
-          timeout: 20000, // 20 second timeout per attempt (increased from 15s)
+          timeout: 20000, // 20 second timeout per attempt
         },
       );
       
@@ -283,7 +288,8 @@ async function getMediaUrlWithRetry(
         throw new Error('Media URL not found in Meta API response');
       }
       
-      console.log('[Media] ✓ Media URL retrieved from Meta API');
+      const attemptDuration = Date.now() - attemptStart;
+      console.log(`[Media] [${requestId}] ✓ Media URL retrieved (attempt ${attemptNum}/${totalAttempts}, ${attemptDuration}ms)`);
       return mediaUrl;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
@@ -299,21 +305,21 @@ async function getMediaUrlWithRetry(
       
       if (!isRetryable || attempt === maxRetries) {
         // Not retryable or last attempt — fail now
-        console.error(`[Media] Meta API request FAILED (attempt ${attempt + 1}/${maxRetries + 1}):`, {
+        console.error(`[Media] [${requestId}] ✗ Meta API request FAILED (attempt ${attemptNum}/${totalAttempts}):`, {
           mediaId: mediaId.substring(0, 20) + '...',
           code: axios.isAxiosError(err) ? err.code : 'UNKNOWN',
           status: axios.isAxiosError(err) ? err.response?.status : undefined,
           error: lastError.message,
           isRetryable,
-          attempt,
         });
         throw lastError;
       }
       
       // Retryable error and not last attempt — wait and retry
-      const backoffMs = 500 * Math.pow(2, attempt); // 500ms, 1s, 2s, 4s...
-      console.warn(`[Media] Meta API timeout (attempt ${attempt + 1}/${maxRetries + 1}) — retrying in ${backoffMs}ms:`, lastError.message);
+      const backoffMs = 500 * Math.pow(2, attempt); // 500ms, 1s, 2s...
+      console.warn(`[Media] [${requestId}] ⚠️ Attempt ${attemptNum}/${totalAttempts} timeout — retrying in ${backoffMs}ms (${lastError.message})`);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
+      console.log(`[Media] [${requestId}] → Retry attempt ${attemptNum + 1}/${totalAttempts} starting...`);
     }
   }
   
@@ -333,7 +339,7 @@ export async function downloadMediaFile(mediaId: string): Promise<Buffer> {
   try {
     // Step 1: Get media URL from Meta API (with retry)
     console.log(`[Media] [${requestId}] Step 1: Fetching media URL from Meta API...`);
-    const mediaUrl = await getMediaUrlWithRetry(mediaId, accessToken, 2);
+    const mediaUrl = await getMediaUrlWithRetry(mediaId, accessToken, requestId, 2);
     const step1Duration = Date.now() - startTime;
     console.log(`[Media] [${requestId}] ✓ Step 1 complete (${step1Duration}ms)`);
     

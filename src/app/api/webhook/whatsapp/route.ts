@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { handleIncomingMessage } from '@/lib/whatsapp/conversation-engine';
 import { getAppSettings } from '@/lib/settings';
 
@@ -110,13 +110,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     console.log(`[Webhook] Message type: ${messageType}, text: ${resolvedTextBody?.substring(0, 50) || '(no text)'}, audioId: ${audioMediaId || '(none)'}`);
 
-    // Dispatch conversation handler (async, don't hold webhook response)
-    // WhatsApp requires 200 OK within 20s or it retries
-    handleIncomingMessage(from, messageType, resolvedTextBody, audioMediaId).catch((err: unknown) => {
-      console.error('[Webhook] ❌ handleIncomingMessage failed:', err);
+    // Use after() to keep background work alive after webhook response
+    // WhatsApp requires 200 OK within 20s, but background processing can continue
+    after(async () => {
+      try {
+        console.log('[Webhook] ▶ Background handler started via after()');
+        await handleIncomingMessage(from, messageType, resolvedTextBody, audioMediaId);
+        console.log('[Webhook] ✓ Background handler completed');
+      } catch (err: unknown) {
+        console.error('[Webhook] ✗ Background handler failed:', err instanceof Error ? err.message : String(err));
+      }
     });
 
-    console.log('[Webhook] ✓ Message dispatched to conversation engine');
+    console.log('[Webhook] ✓ Message dispatched to background handler');
     return NextResponse.json({ status: 'ok' }, { status: 200 });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
